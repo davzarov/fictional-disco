@@ -1,85 +1,74 @@
 """
-https://unix.stackexchange.com/questions/36531/format-of-cookies-when-using-wget
+# Title
+Python script to convert cookies to [Netscape format](https://curl.se/docs/http-cookies.html) 
+to consume in applications like `curl`, `wget` or `youtube-dl`.
 
-Netscape format:
+## Netscape format
+* domain: the domain name.
+* flag: include subdomains.
+* path: path.
+* secure: send/receive over HTTPS only.
+* expiration: seconds since Jan 1st 1970, or 0.
+* name: name of the cookie.
+* value: value of the cookie.
 
--------------------------------------------------------------
-| domain | flag | path | secure | expiration | name | value |
--------------------------------------------------------------
-
-domain: The domain that created AND that can read the variable.
-
-flag: A TRUE/FALSE value indicating if all machines within a given
-domain can access the variable. This value is set automatically by
-the browser, depending on the value you set for domain.
-
-path: The path within the domain that the variable is valid for.
-
-secure: A TRUE/FALSE value indicating if a secure connection with
-the domain is needed to access the variable.
-
-expiration: The UNIX time that the variable will expire on. UNIX
-time is defined as the number of seconds since Jan 1, 1970 00:00:00 GMT.
-
-name: The name of the variable.
-
-value: The value of the variable.
+## Requirements
+* [Python](https://www.python.org/downloads/)
+* Cookies copied from Chrome DevTool Application Tab
 """
 
-import os
-import shutil
 from pathlib import Path
-from typing import Generator, List
+
+from utils import is_empty, list_files, make_directory, make_file, open_file
+from utils.parsing import to_boolean, to_dict, to_domain, to_timestamp
 
 BASE_DIR = Path(__file__).resolve().parent
 FILES_DIR = BASE_DIR / "files"
 COOKIES_DIR = BASE_DIR / "cookies"
 
 
-def open_file(f: Path) -> List[str]:
-    if not f.exists():
-        raise FileExistsError
+def main() -> None:
+    # make files and cookies directories
+    created, files_dir = make_directory(FILES_DIR)
+    _, cookies_dir = make_directory(COOKIES_DIR)
 
-    if f.suffix != '.txt':
-        raise TypeError
-
-    cookies = f.read_text().split("\n")
-    return cookies
-
-
-def list_files(dir: Path) -> Generator[Path, None, None]:
-    for f in dir.iterdir():
-        if f.exists() and f.is_file():
-            yield f
-
-
-def make_directory(dir: Path) -> Path:
-    if not dir.exists():
-        try:
-            dir.mkdir(parents=True)
-        except FileExistsError:
-            pass
+    if is_empty(files_dir):
+        if created:
+            print("[Info]: dirs created, get some cookies and run again.")
         else:
-            print(f"directory {dir.name} created.")
-    return dir
+            print("[Error]: files dir is empty, try again later.")
+        return
+
+    for file in list_files(files_dir):
+        print(f"processing {file.name}...")
+        cookies = open_file(file)
+        # clean empty list elements
+        cookies = list(filter(None, cookies))
+        # touch output file in cookies dir
+        output_file = make_file(cookies_dir, file)
+        # list of formatted cookies
+        formatted_cookies = ["# Netscape HTTP Cookie File", ]
+
+        for row in cookies:
+            # access each cookie as a dictionary
+            cookie = to_dict(row)
+            # get all values
+            domain = to_domain(cookie["domain"])
+            flag = "TRUE"
+            path = cookie["path"]
+            secure = to_boolean(cookie["secure"])
+            expiration = to_timestamp(cookie["expires"])
+            name = cookie["name"]
+            value = cookie["value"]
+            # append cleaned values separated by tabs
+            formatted_cookies.append(
+                "\t".join([domain, flag, path, secure,
+                          expiration, name, value]))
+        # write each cleaned cookie to the output file
+        output_file.write_text("\n".join(formatted_cookies))
+
+    print("[Done]: all files converted to Netscape format.")
 
 
-def make_cookie_file(f: Path):
-    output = COOKIES_DIR / (f"{f.stem}_cookies{f.suffix}")
-
-    if not output.exists():
-        output.touch()
-
-    return output
-
-
-def move_file(o: Path, d: Path) -> None:
-    shutil.move(os.fspath(o), os.fspath(d))
-
-
-def copy_file(o: Path, d: Path) -> None:
-    shutil.copy(os.fspath(o), os.fspath(d))
-
-
-def remove_file(f: Path) -> None:
-    f.unlink()
+if __name__ == "__main__":
+    main()
