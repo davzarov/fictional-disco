@@ -30,7 +30,7 @@ def session_to_unix_time() -> int:
 
 
 def to_timestamp(expiration: str) -> str:
-    if expiration == "Session":
+    if expiration in ["Session", "Sesión"]:
         return str(session_to_unix_time())
     return str(iso_to_unix_time(expiration))
 
